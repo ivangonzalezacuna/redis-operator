@@ -1,135 +1,197 @@
 # redis-operator
-// TODO(user): Add simple overview of use/purpose
+
+The redis-operator is a custom Kubernetes Operator which allows creating a simple
+Redis deployment using a random and secure password.
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+
+When a new `RedisOperator` is created, the user must only specify the name, namespace,
+replicas and the port where the Redis instance is going to be running, based on the
+[bitnami/redis](https://hub.docker.com/r/bitnami/redis) container.
+
+For example, a YAML like [this](./config/samples/ivangonzalezacuna_v1alpha1_redisoperator.yaml):
+
+```yaml
+apiVersion: ivangonzalezacuna.docker.io/v1alpha1
+kind: RedisOperator
+metadata:
+  labels:
+    app.kubernetes.io/name: redisoperator-example
+  name: redisoperator-example
+  namespace: default
+spec:
+  replicas: 2
+  port: 6379
+```
 
 ## Getting Started
 
 ### Prerequisites
+
 - go version v1.23.0+
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+#### Golang
+
+Install following the [official documentation](https://go.dev/doc/install).
+
+#### Docker
+
+Install docker in your machine following the [official documentation](https://www.docker.com/get-started/).
+
+For this setup, I've used my [personal Docker Hub repository](https://hub.docker.com/repositories/ivangonzalezacuna).
+
+#### Kubectl
+
+Install following the [official documentation](https://kubernetes.io/docs/tasks/tools/#kubectl).
+
+#### Kubernetes Cluster
+
+For this setup we can use `minikube` as our Kubernetes Cluster.
+You can install it and start a cluster following the [official documentation](https://kubernetes.io/docs/tasks/tools/#minikube).
+
+### Deploy the Custom Kubernetes Operator
+
+In order to deploy the CRD (Custom Resource Definition) and the Manager, which will
+handle the creation of the custom resources, you will need to follow these steps:
 
 ```sh
-make docker-build docker-push IMG=<some-registry>/redis-operator:tag
+# To install the CRDs into the cluster
+make install
+
+# To deploy the Manager to the cluster
+make deploy
 ```
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+Once that is done and the manager is started, you can check the logs with this command:
 
-**Install the CRDs into the cluster:**
+```sh
+kubectl -n redis-operator-system logs -f redis-operator-controller-manager-85978b9cc-vkjp4
+```
+
+### Deploy the Custom Resource
+
+Then it's time to apply a `RedisOperator` into our cluster. For that, you can directly apply the sample:
+
+```sh
+kubectl apply -f config/samples/ivangonzalezacuna_v1alpha1_redisoperator.yaml
+```
+
+After a few seconds, you should the new Deployments, Pods and Secrets:
+
+```sh
+$ kubectl -n default get deployments.apps
+NAME                    READY   UP-TO-DATE   AVAILABLE   AGE
+redisoperator-example   2/2     2            2           20m
+
+$ kubectl -n default get pods
+NAME                                     READY   STATUS    RESTARTS   AGE
+redisoperator-example-74c6d87b9b-2w4l7   1/1     Running   0          20s
+redisoperator-example-74c6d87b9b-kgg25   1/1     Running   0          20s
+
+$ kubectl -n default get secrets
+NAME           TYPE     DATA   AGE
+redis-secret   Opaque   1      20m
+```
+
+Now, we can check if the password is actually set and working properly. For that, let's
+see the following commands and their output:
+
+```sh
+# Make a PING without a password set
+$ kubectl exec redisoperator-example-74c6d87b9b-kgg25 -- sh -c 'redis-cli -p ${REDIS_PORT_NUMBER} ping'
+NOAUTH Authentication required.
+
+# Now let's make the same request setting the password
+$ kubectl exec redisoperator-example-74c6d87b9b-kgg25 -- sh -c 'REDISCLI_AUTH=${REDIS_PASSWORD} redis-cli -p ${REDIS_PORT_NUMBER} ping'
+PONG
+
+# To verify that the password is there and it's secure, we can use:
+$ kubectl exec redisoperator-example-74c6d87b9b-kgg25 -- sh -c 'echo $REDIS_PASSWORD'
+...
+```
+> **NOTE:** Make sure you set the port as well. If you specified a different `spec.port` that the 
+> default one, the ping will always fail with a `Could not connect to Redis` error.
+
+### Update the Custom Resource
+
+This Kubernetes Operator also supports to update the resource if a `patch` is received, for example. Let's see what happens if we do so:
+
+```sh
+# Update the replicas from 2 to 5
+$ kubectl patch redisoperators.ivangonzalezacuna.docker.io redisoperator-example -p '{"spec":{"replicas": 5}}' --type=merge
+redisoperator.ivangonzalezacuna.docker.io/redisoperator-example patched
+
+$ kubectl -n default get pods
+NAME                                     READY   STATUS    RESTARTS   AGE
+redisoperator-example-74c6d87b9b-2w4l7   1/1     Running   0          75s
+redisoperator-example-74c6d87b9b-hbsvq   1/1     Running   0          5s
+redisoperator-example-74c6d87b9b-kgg25   1/1     Running   0          75s
+redisoperator-example-74c6d87b9b-r996r   1/1     Running   0          5s
+redisoperator-example-74c6d87b9b-vpxkk   1/1     Running   0          5s
+```
+
+Also, the `replicas` is configured to always be between 1 and 5. In other case, an
+error would be returned:
+
+```sh
+$ kubectl patch redisoperators.ivangonzalezacuna.docker.io redisoperator-example -p '{"spec":{"replicas": 10}}' --type=merge
+The RedisOperator "redisoperator-example" is invalid: spec.replicas: Invalid value: 10: spec.replicas in body should be less than or equal to 5
+```
+
+## Development
+
+During development, it's possible to build and push new images for the Manager if needed.
+Afterwards, it's important to update the Kubernetes Operator accordingly with the new
+image. For that, we can use the following command:
+
+```sh
+# Build and push a new image using a new tag
+make docker-build docker-push VERSION=<version>
+```
+
+If the CRDs changed in some way (new `Spec` or `Status` variables for example), then
+we will also need to run the 2 following commands to ensure everything is updated:
+
+```sh
+# To update the base CRD definition
+make generate
+
+# To update any other changed manifests, like RBAC permissions
+make manifests
+```
+
+If the CRDs changed, then we must ensure they are up-to-date in the cluster. For that,
+execute the following command:
 
 ```sh
 make install
 ```
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+And finally, to deploy the Manager version into the cluster, we will need to execute the
+following command:
 
 ```sh
-make deploy IMG=<some-registry>/redis-operator:tag
+make deploy VERSION=<version>
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
+> **IMPORTANT:** If the version pushed to the registry is different, we must ensure the
+> variable `VERSION` matches it. Otherwise, the string `0.0.1` will be used by default.
 
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+### Uninstall resources
 
-```sh
-kubectl apply -k config/samples/
-```
-
->**NOTE**: Ensure that the samples has default values to test it out.
-
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+It might also be needed at some point to delete the resources created in the cluster.
+For that, there are the following commands available:
 
 ```sh
+# Delete the instances (CRs) from the cluster
 kubectl delete -k config/samples/
-```
 
-**Delete the APIs(CRDs) from the cluster:**
-
-```sh
+# Delete the APIs(CRDs) from the cluster
 make uninstall
-```
 
-**UnDeploy the controller from the cluster:**
-
-```sh
+# Undeploy the controller from the cluster
 make undeploy
 ```
-
-## Project Distribution
-
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/redis-operator:tag
-```
-
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/redis-operator/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-operator-sdk edit --plugins=helm/v1-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
-
-## License
-
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-

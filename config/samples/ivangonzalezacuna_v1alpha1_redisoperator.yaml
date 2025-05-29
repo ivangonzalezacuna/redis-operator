@@ -1,0 +1,11 @@
+apiVersion: ivangonzalezacuna.docker.io/v1alpha1
+kind: RedisOperator
+metadata:
+  labels:
+    app.kubernetes.io/name: redis-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: redisoperator-sample
+  namespace: default
+spec:
+  replicas: 2
+  port: 6379

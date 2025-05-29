@@ -66,10 +66,6 @@ type RedisOperatorReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the RedisOperator object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.20.4/pkg/reconcile
@@ -108,79 +104,6 @@ func (r *RedisOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return ctrl.Result{}, err
 		}
 	}
-
-	// // Let's add a finalizer. Then, we can define some operations which should
-	// // occur before the custom resource is deleted.
-	// // More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/finalizers
-	// if !controllerutil.ContainsFinalizer(redisOperator, redisOperatorFinalizer) {
-	// 	log.Info("Adding Finalizer for Redis Operator")
-	// 	if ok := controllerutil.AddFinalizer(redisOperator, redisOperatorFinalizer); !ok {
-	// 		log.Error(err, "Failed to add finalizer into the custom resource")
-	// 		return ctrl.Result{Requeue: true}, nil
-	// 	}
-
-	// 	if err = r.Update(ctx, redisOperator); err != nil {
-	// 		log.Error(err, "Failed to update custom resource to add finalizer")
-	// 		return ctrl.Result{}, err
-	// 	}
-	// }
-
-	// // Check if the redis-operator instance is marked to be deleted, which is
-	// // indicated by the deletion timestamp being set.
-	// isMemcachedMarkedToBeDeleted := redisOperator.GetDeletionTimestamp() != nil
-	// if isMemcachedMarkedToBeDeleted {
-	// 	if controllerutil.ContainsFinalizer(redisOperator, redisOperatorFinalizer) {
-	// 		log.Info("Performing Finalizer Operations for Redis Operator before delete CR")
-
-	// 		// Let's add here a status "Downgrade" to reflect that this resource began its process to be terminated.
-	// 		meta.SetStatusCondition(&redisOperator.Status.Conditions, metav1.Condition{Type: typeDegradedRedis,
-	// 			Status: metav1.ConditionUnknown, Reason: "Finalizing",
-	// 			Message: fmt.Sprintf("Performing finalizer operations for the custom resource: %s ", redisOperator.Name)})
-
-	// 		if err := r.Status().Update(ctx, redisOperator); err != nil {
-	// 			log.Error(err, "Failed to update Redis Operator status")
-	// 			return ctrl.Result{}, err
-	// 		}
-
-	// 		// Perform all operations required before removing the finalizer and allow
-	// 		// the Kubernetes API to remove the custom resource.
-	// 		r.doFinalizerOperationsForRedis(redisOperator)
-
-	// 		// TODO(user): If you add operations to the doFinalizerOperationsForMemcached method
-	// 		// then you need to ensure that all worked fine before deleting and updating the Downgrade status
-	// 		// otherwise, you should requeue here.
-
-	// 		// Re-fetch the memcached Custom Resource before updating the status
-	// 		// so that we have the latest state of the resource on the cluster and we will avoid
-	// 		// raising the error "the object has been modified, please apply
-	// 		// your changes to the latest version and try again" which would re-trigger the reconciliation
-	// 		if err := r.Get(ctx, req.NamespacedName, redisOperator); err != nil {
-	// 			log.Error(err, "Failed to re-fetch redis-operator")
-	// 			return ctrl.Result{}, err
-	// 		}
-
-	// 		meta.SetStatusCondition(&redisOperator.Status.Conditions, metav1.Condition{Type: typeDegradedRedis,
-	// 			Status: metav1.ConditionTrue, Reason: "Finalizing",
-	// 			Message: fmt.Sprintf("Finalizer operations for custom resource %s name were successfully accomplished", redisOperator.Name)})
-
-	// 		if err := r.Status().Update(ctx, redisOperator); err != nil {
-	// 			log.Error(err, "Failed to update Redis Operator status")
-	// 			return ctrl.Result{}, err
-	// 		}
-
-	// 		log.Info("Removing Finalizer for Redis Operator after successfully perform the operations")
-	// 		if ok := controllerutil.RemoveFinalizer(redisOperator, redisOperatorFinalizer); !ok {
-	// 			log.Error(err, "Failed to remove finalizer for Redis Operator")
-	// 			return ctrl.Result{Requeue: true}, nil
-	// 		}
-
-	// 		if err := r.Update(ctx, redisOperator); err != nil {
-	// 			log.Error(err, "Failed to remove finalizer for Redis Operator")
-	// 			return ctrl.Result{}, err
-	// 		}
-	// 	}
-	// 	return ctrl.Result{}, nil
-	// }
 
 	// Check if the deployment already exists, if not create a new one
 	found := &appsv1.Deployment{}
@@ -299,25 +222,6 @@ func (r *RedisOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	return ctrl.Result{}, nil
 }
-
-// finalizeMemcached will perform the required operations before delete the CR.
-// func (r *RedisOperatorReconciler) doFinalizerOperationsForRedis(redisOperator *ivangonzalezacunav1alpha1.RedisOperator) {
-// 	// TODO(user): Add the cleanup steps that the operator
-// 	// needs to do before the CR can be deleted. Examples
-// 	// of finalizers include performing backups and deleting
-// 	// resources that are not owned by this CR, like a PVC.
-
-// 	// Note: It is not recommended to use finalizers with the purpose of deleting resources which are
-// 	// created and managed in the reconciliation. These ones, such as the Deployment created on this reconcile,
-// 	// are defined as dependent of the custom resource. See that we use the method ctrl.SetControllerReference.
-// 	// to set the ownerRef which means that the Deployment will be deleted by the Kubernetes API.
-// 	// More info: https://kubernetes.io/docs/tasks/administer-cluster/use-cascading-deletion/
-
-// 	r.Recorder.Event(redisOperator, "Warning", "Deleting",
-// 		fmt.Sprintf("Custom Resource %s is being deleted from the namespace %s",
-// 			redisOperator.Name,
-// 			redisOperator.Namespace))
-// }
 
 func (r *RedisOperatorReconciler) redisSecret(redisOperator *ivangonzalezacunav1alpha1.RedisOperator) (*corev1.Secret, error) {
 	token, err := generateToken()

@@ -210,6 +210,54 @@ func (r *RedisOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{Requeue: true}, nil
 	}
 
+	// The CRD API defines that the RedisOperator type have a RedisOperator.Port field
+	// to set the port where Redis is listening.
+	// Therefore, the following code will ensure the Deployment port configuration is
+	// the same as defined via the Port spec of the Custom Resource which we are reconciling.
+	// To apply the updates, we are making the assumption that the deployment is still
+	// matching the same configuration we defined when creating it.
+	redisPort := redisOperator.Spec.Port
+	if len(found.Spec.Template.Spec.Containers) == 1 &&
+		len(found.Spec.Template.Spec.Containers[0].Env) == 2 &&
+		found.Spec.Template.Spec.Containers[0].Env[0].Name == "REDIS_PORT_NUMBER" &&
+		len(found.Spec.Template.Spec.Containers[0].Ports) == 1 &&
+		found.Spec.Template.Spec.Containers[0].Ports[0].Name == "redis" &&
+		found.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort != redisPort {
+		found.Spec.Template.Spec.Containers[0].Ports[0].ContainerPort = redisPort
+		found.Spec.Template.Spec.Containers[0].Env[0].Value = strconv.Itoa(int(redisPort))
+
+		if err = r.Update(ctx, found); err != nil {
+			log.Error(err, "Failed to update Deployment", "Deployment.Namespace", found.Namespace, "Deployment.Name", found.Name)
+
+			// Re-fetch the redis-operator Custom Resource before updating the status
+			// so that we have the latest state of the resource on the cluster and we will avoid
+			// raising the error "the object has been modified, please apply
+			// your changes to the latest version and try again" which would re-trigger the reconciliation
+			if err := r.Get(ctx, req.NamespacedName, redisOperator); err != nil {
+				log.Error(err, "Failed to re-fetch redis-operator")
+				return ctrl.Result{}, err
+			}
+
+			// The following implementation will update the status
+			meta.SetStatusCondition(&redisOperator.Status.Conditions, metav1.Condition{Type: typeDegradedRedis,
+				Status: metav1.ConditionFalse, Reason: "Restarting",
+				Message: fmt.Sprintf("Failed to update the port for the custom resource (%s): (%s)", redisOperator.Name, err)})
+
+			if err := r.Status().Update(ctx, redisOperator); err != nil {
+				log.Error(err, "Failed to update Redis Operator status")
+				return ctrl.Result{}, err
+			}
+
+			return ctrl.Result{}, err
+		}
+
+		// Now, that we update the redis port we want to requeue the reconciliation
+		// so that we can ensure that we have the latest state of the resource before
+		// update. Also, it will help ensure the desired state on the cluster
+		return ctrl.Result{Requeue: true}, nil
+
+	}
+
 	// The following implementation will update the status
 	meta.SetStatusCondition(&redisOperator.Status.Conditions, metav1.Condition{Type: typeAvailableRedis,
 		Status: metav1.ConditionTrue, Reason: "Reconciling",

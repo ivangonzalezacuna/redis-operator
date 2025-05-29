@@ -141,6 +141,21 @@ $ kubectl patch redisoperators.ivangonzalezacuna.docker.io redisoperator-example
 The RedisOperator "redisoperator-example" is invalid: spec.replicas: Invalid value: 10: spec.replicas in body should be less than or equal to 5
 ```
 
+As well, it's possible to update the port that Redis is listening to. For example:
+
+```sh
+$ kubectl patch redisoperators.ivangonzalezacuna.docker.io redisoperator-example -p '{"spec":{"port": 6789}}' --type=merge
+redisoperator.ivangonzalezacuna.docker.io/redisoperator-example patched
+
+$ kubectl get pods redisoperator-example-8597498f9c-f59hz -o yaml | grep ports: -A 5
+    ports:
+    - containerPort: 6789
+      name: redis
+      protocol: TCP
+    resources: {}
+    terminationMessagePath: /dev/termination-log
+```
+
 ## Development
 
 During development, it's possible to build and push new images for the Manager if needed.

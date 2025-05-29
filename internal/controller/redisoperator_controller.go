@@ -18,7 +18,10 @@ package controller
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
+	"strconv"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -244,10 +247,10 @@ func (r *RedisOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
-	// The CRD API defines that the RedisOperator type have a RedisOperator.Size field
+	// The CRD API defines that the RedisOperator type have a RedisOperator.Replicas field
 	// to set the quantity of Deployment instances to the desired state on the cluster.
-	// Therefore, the following code will ensure the Deployment size is the same as defined
-	// via the Size spec of the Custom Resource which we are reconciling.
+	// Therefore, the following code will ensure the Deployment replicas are the same as defined
+	// via the Replicas spec of the Custom Resource which we are reconciling.
 	replicas := redisOperator.Spec.Replicas
 	if *found.Spec.Replicas != replicas {
 		found.Spec.Replicas = &replicas
@@ -345,14 +348,13 @@ func (r *RedisOperatorReconciler) redisSecret(redisOperator *ivangonzalezacunav1
 
 // Generate the Random 256 byte token
 func generateToken() (string, error) {
-	return "password123", nil
-	// token := make([]byte, 256)
-	// _, err := rand.Read(token)
-	// if err != nil {
-	// 	return "", fmt.Errorf("found error while generating the secret token: %w", err)
-	// }
+	token := make([]byte, 256)
+	_, err := rand.Read(token)
+	if err != nil {
+		return "", fmt.Errorf("found error while generating the secret token: %w", err)
+	}
 
-	// return base64.StdEncoding.EncodeToString(token), nil
+	return base64.StdEncoding.EncodeToString(token), nil
 }
 
 func (r *RedisOperatorReconciler) redisDeployment(redisOperator *ivangonzalezacunav1alpha1.RedisOperator) (*appsv1.Deployment, error) {
@@ -391,6 +393,10 @@ func (r *RedisOperatorReconciler) redisDeployment(redisOperator *ivangonzalezacu
 								},
 							},
 							Env: []corev1.EnvVar{
+								{
+									Name:  "REDIS_PORT_NUMBER",
+									Value: strconv.Itoa(int(redisOperator.Spec.Port)),
+								},
 								{
 									Name: "REDIS_PASSWORD",
 									ValueFrom: &corev1.EnvVarSource{

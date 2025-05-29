@@ -40,7 +40,8 @@ spec:
             description: RedisOperatorSpec defines the desired state of RedisOperator.
             properties:
               port:
-                description: Port is the number of replicas the deployment will have
+                default: 6379
+                description: Port is the port where Redis will be listening
                 format: int32
                 type: integer
               replicas:

@@ -37,7 +37,9 @@ type RedisOperatorSpec struct {
 	// Replicas is the number of replicas the deployment will have
 	// +operator-sdk:csv:customresourcedefinitions:type=spec
 	Replicas int32 `json:"replicas"`
-	// Port is the number of replicas the deployment will have
+
+	// +kubebuilder:default:=6379
+	// Port is the port where Redis will be listening
 	// +operator-sdk:csv:customresourcedefinitions:type=spec
 	Port int32 `json:"port"`
 }
